@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Calendário Lunar — Correção</title>
+<style>
+:root{--bg-day-start:#a8d8ff;--bg-day-end:#4A90E2;--bg-night-start:#071428;--bg-night-end:#001133;--card:rgba(255,255,255,0.07);}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:18px;transition:background 800ms ease;color:#fff}
+.header{width:100%;max-width:1100px;display:flex;gap:12px;align-items:center;justify-content:space-between}
+.title{display:flex;flex-direction:column}
+.controls{display:flex;gap:8px;align-items:center}
+.button{background:var(--card);border:0;padding:8px 12px;border-radius:10px;color:inherit;cursor:pointer}
+.input{background:rgba(255,255,255,0.06);border:0;padding:8px 10px;border-radius:8px;color:inherit}
+.container{width:100%;max-width:1100px;margin-top:18px;display:grid;grid-template-columns:360px 1fr;gap:20px}
+.panel{background:var(--card);padding:14px;border-radius:12px}
+.weatherTop{display:flex;align-items:center;gap:12px}
+.weatherIcon{width:64px;height:64px;border-radius:12px;background:linear-gradient(180deg,#fff,#eee);display:grid;place-items:center;color:#333;font-weight:700}
+.small{font-size:13px;color:rgba(255,255,255,0.85)}
+.calendarWrap{padding:8px}
+.calendarHeader{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.navBtn{background:transparent;border:0;color:inherit;font-size:20px;cursor:pointer}
+#calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:10px}
+.day{background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.02));padding:12px;border-radius:10px;min-height:98px;position:relative;overflow:visible}
+.day strong{display:block}
+.moonLabel{font-size:12px;color:rgba(255,255,255,0.85);text-align:center;margin-top:8px}
+.moonReal{width:56px;height:56px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #ffffff,#e6e6e6 60%);position:relative;margin:8px auto;box-shadow:0 8px 18px rgba(0,0,0,0.35)}
+.moonReal::after{content:'';position:absolute;inset:0;border-radius:50%;background:rgba(5,17,31,0.98);transform:translateX(var(--shift,18%));transition:transform 600ms cubic-bezier(.22,.9,.26,1),opacity 600ms;opacity:var(--op,1)}
+.moonReal .shine{position:absolute;left:8px;top:8px;width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,0.6);filter:blur(1px)}
+.footerNote{font-size:12px;color:rgba(255,255,255,0.7);margin-top:12px}
+@media (max-width:980px){.container{grid-template-columns:1fr}.header{flex-direction:column;align-items:flex-start}}
+@media (max-width:520px){#calendar{grid-template-columns:repeat(3,1fr)}.moonReal{width:44px;height:44px}}
+.status{font-size:13px;color:rgba(255,255,255,0.9);margin-top:8px}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="title">
+    <h1 style="margin:0">Calendário Lunar — Correção</h1>
+    <div class="small">Versão reparada: mensagens de erro visíveis e fallback robusto.</div>
+  </div>
+  <div class="controls">
+    <input id="apiKeyInput" class="input" placeholder="Cole sua OpenWeather API key aqui" style="width:320px" />
+    <button id="saveKey" class="button">Salvar (local)</button>
+    <button id="refreshWeather" class="button">Atualizar clima</button>
+    <button id="themeToggle" class="button">Toggle tema</button>
+  </div>
+</div>
+
+<div class="container">
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="display:flex;gap:12px;align-items:center">
+        <div class="weatherIcon" id="weatherIcon">--</div>
+        <div>
+          <div id="location" class="small">Local: —</div>
+          <div id="tempMain" style="font-size:22px;font-weight:600">—</div>
+          <div id="desc" class="small">—</div>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div class="small">Nascer: <span id="sunrise">--:--</span></div>
+        <div class="small">Pôr: <span id="sunset">--:--</span></div>
+        <div class="small">Lua: <span id="moonPhaseText">—</span></div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="flex:1;min-width:140px">
+        <div class="small">Coordenadas</div>
+        <div id="coords" class="small">—</div>
+      </div>
+      <div style="min-width:140px">
+        <div class="small">Humidade</div>
+        <div id="humidity" class="small">—</div>
+      </div>
+      <div style="min-width:140px">
+        <div class="small">Vento</div>
+        <div id="wind" class="small">—</div>
+      </div>
+    </div>
+
+    <div class="status" id="status">Status: aguardando ação...</div>
+    <div class="footerNote">Observação: a chave nunca sai do seu navegador (localStorage). Se quiser, apague-a manualmente no console com <code>localStorage.removeItem('ow_api_key')</code>.</div>
+  </div>
+
+  <div class="panel calendarWrap">
+    <div class="calendarHeader">
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="navBtn" id="prevMonth">◀</button>
+        <div id="monthLabel" style="font-weight:600"></div>
+        <button class="navBtn" id="nextMonth">▶</button>
+      </div>
+      <div class="small">Mês/ano</div>
+    </div>
+
+    <div id="calendar"></div>
+  </div>
+</div>
+
+<script>
+// ===== utilidades =====
+const apiInput = document.getElementById('apiKeyInput');
+const saveBtn = document.getElementById('saveKey');
+const refreshBtn = document.getElementById('refreshWeather');
+const statusEl = document.getElementById('status');
+
+// respeita chave salva antes (se houver)
+const storedKey = localStorage.getItem('ow_api_key');
+if(storedKey) apiInput.value = storedKey;
+
+saveBtn.addEventListener('click', ()=>{
+  const k = apiInput.value.trim();
+  if(!k){ alert('Cole sua OpenWeather API key antes.'); return; }
+  localStorage.setItem('ow_api_key', k);
+  status('Chave salva localmente. Atualizando clima...');
+  resolveAndShowWeather();
+});
+refreshBtn.addEventListener('click', ()=>{ resolveAndShowWeather(); });
+
+function status(msg){ statusEl.textContent = 'Status: ' + msg; }
+
+// theme
+const themeToggle = document.getElementById('themeToggle');
+let forcedTheme = null; // null = automatic, true=night, false=day
+function applyTheme(night){
+  if(forcedTheme !== null) night = forcedTheme;
+  if(night) document.body.style.background = `linear-gradient(180deg,var(--bg-night-start),var(--bg-night-end))`;
+  else document.body.style.background = `linear-gradient(180deg,var(--bg-day-start),var(--bg-day-end))`;
+}
+themeToggle.addEventListener('click', ()=>{ forcedTheme = forcedTheme===null ? !(getIsDaytime()) : (forcedTheme ? null : true); applyTheme(forcedTheme===null ? !getIsDaytime() : forcedTheme); });
+
+// calendar state
+let viewYear, viewMonth;
+const nowGlobal = new Date();
+viewYear = nowGlobal.getFullYear(); viewMonth = nowGlobal.getMonth();
+
+const monthLabel = document.getElementById('monthLabel');
+const calendarEl = document.getElementById('calendar');
+const prevBtn = document.getElementById('prevMonth');
+const nextBtn = document.getElementById('nextMonth');
+prevBtn.addEventListener('click', ()=>{ viewMonth--; if(viewMonth<0){viewMonth=11; viewYear--;} renderCalendar(); });
+nextBtn.addEventListener('click', ()=>{ viewMonth++; if(viewMonth>11){viewMonth=0; viewYear++;} renderCalendar(); });
+
+// ---- moon astronomy (smooth) ----
+function moonIllumination(date){
+  const yy = date.getFullYear();
+  const mm = date.getMonth()+1;
+  const dd = date.getDate() + (date.getHours()/24) + (date.getMinutes()/1440);
+  let y = yy; let m = mm;
+  if(m < 3){ y--; m += 12; }
+  ++m;
+  const c = 365.25 * y;
+  const e = 30.6 * m;
+  const jd = c + e + dd - 694039.09; // days since reference
+  const syn = 29.5305882;
+  const days = jd % syn;
+  const age = days < 0 ? days + syn : days;
+  const phase = age / syn; // 0..1
+  const illum = (1 - Math.cos(2*Math.PI*phase)) / 2;
+  return {age: age, phase: phase, illum: illum};
+}
+function phaseNameFromPhase(phase){
+  if(phase < 0.03 || phase > 0.97) return 'Nova';
+  if(phase < 0.22) return 'Crescente fina';
+  if(phase < 0.28) return 'Quarto Crescente';
+  if(phase < 0.47) return 'Gibosa Crescente';
+  if(phase < 0.53) return 'Cheia';
+  if(phase < 0.72) return 'Gibosa Minguante';
+  if(phase < 0.78) return 'Quarto Minguante';
+  return 'Minguante fina';
+}
+function createMoonElement(phase){
+  const wrap = document.createElement('div');
+  wrap.className = 'moonReal';
+  const shiftPct = (0.5 - phase) * 60; // -30..30
+  const illum = (1 - Math.cos(2*Math.PI*phase)) / 2;
+  const op = 1 - illum;
+  wrap.style.setProperty('--shift', shiftPct + '%');
+  wrap.style.setProperty('--op', String(op));
+  const shine = document.createElement('div'); shine.className='shine'; wrap.appendChild(shine);
+  return wrap;
+}
+
+// ----- render calendar -----
+function renderCalendar(){
+  const monthNames = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  monthLabel.textContent = monthNames[viewMonth] + ' ' + viewYear;
+  calendarEl.innerHTML = '';
+  const weekDays = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  for(const wd of weekDays){ const h = document.createElement('div'); h.style.opacity=0.8; h.style.fontSize='13px'; h.style.textAlign='center'; h.style.padding='6px 0'; h.textContent = wd; calendarEl.appendChild(h); }
+  const first = new Date(viewYear, viewMonth, 1).getDay();
+  const last = new Date(viewYear, viewMonth+1, 0).getDate();
+  for(let i=0;i<first;i++){ const blank = document.createElement('div'); blank.className='day'; blank.style.background='transparent'; blank.style.boxShadow='none'; calendarEl.appendChild(blank); }
+  for(let d=1; d<=last; d++){
+    const date = new Date(viewYear, viewMonth, d, 12, 0);
+    const info = moonIllumination(date);
+    const day = document.createElement('div'); day.className='day'; const num = document.createElement('strong'); num.textContent = d; day.appendChild(num);
+    const moonEl = createMoonElement(info.phase); day.appendChild(moonEl);
+    const label = document.createElement('div'); label.className='moonLabel'; label.textContent = phaseNameFromPhase(info.phase) + ' • ' + Math.round(info.illum*100) + '%'; day.appendChild(label);
+    calendarEl.appendChild(day);
+  }
+}
+
+// ----- weather fetch and UI -----
+async function fetchWeatherForCoords(lat, lon, apiKey){
+  const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&lang=pt_br&appid=${apiKey}`;
+  try{ const res = await fetch(url); if(!res.ok) { const txt = await res.text(); throw new Error('API response not OK: '+res.status+' '+txt); } const data = await res.json(); return data; }catch(err){ console.error('fetchWeatherForCoords error',err); return null; }
+}
+
+function getIsDaytime(){
+  // fallback: consider 6..18 as day if we don't have API data yet
+  const h = new Date().getHours(); return h>=6 && h<18;
+}
+
+async function resolveAndShowWeather(){
+  status('Iniciando busca de clima...');
+  const key = localStorage.getItem('ow_api_key') || apiInput.value.trim();
+  if(!key){ status('Sem API key. Cole a OpenWeather API key e clique em Salvar.'); return; }
+
+  // try geolocation with explicit callbacks and timeouts
+  const geoPromise = new Promise((resolve,reject)=>{
+    if(!navigator.geolocation){ reject(new Error('Geolocalização não disponível')); return; }
+    const timer = setTimeout(()=> reject(new Error('Tempo esgotado para geolocalização (8s)')), 8000);
+    navigator.geolocation.getCurrentPosition(pos=>{ clearTimeout(timer); resolve(pos); }, err=>{ clearTimeout(timer); reject(err); }, {timeout:7000});
+  });
+
+  try{
+    status('Aguardando permissão de localização...');
+    const pos = await geoPromise;
+    status('Localização obtida. Buscando clima...');
+    const lat = pos.coords.latitude; const lon = pos.coords.longitude;
+    document.getElementById('coords').textContent = lat.toFixed(4)+', '+lon.toFixed(4);
+    const w = await fetchWeatherForCoords(lat, lon, key);
+    if(!w) { status('Erro ao obter dados do OpenWeather — verifique a chave no Console.'); return; }
+    applyWeatherToUI(w);
+  }catch(err){
+    console.warn('geolocation failed:', err);
+    status('Não foi possível obter localização automaticamente. Pedindo cidade...');
+    const city = prompt('Não foi possível acessar sua localização. Digite sua cidade (ex: São Paulo) para buscar o clima:');
+    if(!city) { status('Cidade não fornecida. Clima não carregado.'); return; }
+    try{
+      status('Geocodificando cidade...');
+      const geoRes = await fetch(`https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(city)}&limit=1&appid=${key}`);
+      const gjson = await geoRes.json();
+      if(!gjson || !gjson[0]){ status('Cidade não encontrada.'); return; }
+      const lat = gjson[0].lat; const lon = gjson[0].lon; document.getElementById('coords').textContent = lat.toFixed(4)+', '+lon.toFixed(4);
+      status('Buscando clima para ' + city + '...');
+      const w = await fetchWeatherForCoords(lat, lon, key);
+      if(!w){ status('Erro ao buscar clima para a cidade.'); return; }
+      applyWeatherToUI(w);
+    }catch(e){ console.error(e); status('Erro ao geocodificar cidade (veja console).'); }
+  }
+}
+
+function applyWeatherToUI(w){
+  if(!w) return;
+  const iconBox = document.getElementById('weatherIcon');
+  const tempBox = document.getElementById('tempMain');
+  const descBox = document.getElementById('desc');
+  const locBox = document.getElementById('location');
+  const hum = document.getElementById('humidity');
+  const wind = document.getElementById('wind');
+  const sunrise = document.getElementById('sunrise');
+  const sunset = document.getElementById('sunset');
+  const moonPhaseText = document.getElementById('moonPhaseText');
+
+  // safe guards in case of missing fields
+  const weatherMain = w.weather && w.weather[0] ? w.weather[0].main : '—';
+  const weatherDesc = w.weather && w.weather[0] ? w.weather[0].description : '—';
+  iconBox.textContent = weatherMain.slice(0,1);
+  tempBox.textContent = (w.main && Math.round(w.main.temp)) ? Math.round(w.main.temp)+'°C' : '—';
+  descBox.textContent = weatherDesc;
+  locBox.textContent = (w.name || '—') + (w.sys && w.sys.country ? ', ' + w.sys.country : '');
+  hum.textContent = (w.main && w.main.humidity) ? w.main.humidity + '%' : '—';
+  wind.textContent = (w.wind && w.wind.speed) ? w.wind.speed + ' m/s' : '—';
+
+  const sr = w.sys && w.sys.sunrise ? new Date(w.sys.sunrise*1000) : null;
+  const ss = w.sys && w.sys.sunset ? new Date(w.sys.sunset*1000) : null;
+  sunrise.textContent = sr ? sr.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '--:--';
+  sunset.textContent = ss ? ss.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '--:--';
+
+  // compute moon phase for today (local) using our algorithm
+  const mi = moonIllumination(new Date());
+  moonPhaseText.textContent = phaseNameFromPhase(mi.phase) + ' • ' + Math.round(mi.illum*100) + '%';
+
+  // decide day/night using sunrise/sunset from API if available
+  const nowTs = Date.now()/1000;
+  let isDay = true;
+  if(w.sys && w.sys.sunrise && w.sys.sunset){ isDay = nowTs >= w.sys.sunrise && nowTs < w.sys.sunset; }
+  applyTheme(!isDay);
+  // nicer weather icon (simple mapping)
+  const map = {
+    'Clear':'☀', 'Clouds':'☁', 'Rain':'🌧', 'Drizzle':'🌦', 'Thunderstorm':'⛈', 'Snow':'❄', 'Mist':'🌫', 'Smoke':'🌫', 'Haze':'🌫', 'Dust':'🌫', 'Fog':'🌫', 'Sand':'🌫', 'Ash':'🌫', 'Squall':'🌬', 'Tornado':'🌪'
+  };
+  iconBox.textContent = map[weatherMain] || 'ℹ';
+  status('Clima carregado com sucesso.');
+}
+
+// init
+renderCalendar(); applyTheme(!getIsDaytime());
+
+async function initApp(){ renderCalendar(); await resolveAndShowWeather(); }
+
+initApp();
+// refresh weather every 10 minutes
+setInterval(()=>{ if(localStorage.getItem('ow_api_key')||apiInput.value.trim()) resolveAndShowWeather(); }, 10*60*1000);
+
+</script>
+</body>
+</html>
